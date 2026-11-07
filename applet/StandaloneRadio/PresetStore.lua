@@ -104,7 +104,7 @@ end
 
 function PresetStore:assign(number, station)
 	number = tonumber(number)
-	if not number or number < 1 or number > 6 or not station then
+	if not number or number < 1 or number > 9 or not station then
 		return false
 	end
 
@@ -145,7 +145,7 @@ function PresetStore:updateLogo(station)
 	end
 
 	local changed = false
-	for i = 1, 6 do
+	for i = 1, 9 do
 		local preset = self.settings.presets[i] or self.settings.presets[tostring(i)]
 		if preset and (
 			(station.stationuuid and preset.stationuuid == station.stationuuid)

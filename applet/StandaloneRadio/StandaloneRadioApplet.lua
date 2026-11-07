@@ -1,4 +1,4 @@
-local assert, io, ipairs, os, pairs, pcall, tostring = assert, io, ipairs, os, pairs, pcall, tostring
+local assert, io, ipairs, os, pairs, pcall, tonumber, tostring = assert, io, ipairs, os, pairs, pcall, tonumber, tostring
 
 local oo = require("loop.simple")
 local table = require("table")
@@ -33,6 +33,7 @@ local UrlTransport = require("applets.StandaloneRadio.UrlTransport")
 
 local log = require("jive.utils.log").logger("StandaloneRadio")
 local appletManager = appletManager
+local jiveMain = jiveMain
 
 local AUTOTEST_MARKER = "/tmp/standalone-radio-autotest"
 local DEFAULT_COUNTRY_CODE = "NL"
@@ -694,7 +695,7 @@ function _showOpmlStationActions(self,station)
             local saved=self.presetStore:saveFavorite(station)
             self:_showPopup(self:string(saved and "STANDALONE_RADIO_FAVORITE_SAVED" or "STANDALONE_RADIO_FAILED"))
         end}}
-    for i=1,6 do
+    for i=1,9 do
         local number=i
         items[#items+1]={text=self:string("STANDALONE_RADIO_PRESET").." "..i,sound="SELECT",weight=i,
             callback=function() self.presetStore:assign(number,station);window:hide() end}
@@ -855,4 +856,21 @@ function enableStandaloneMode(self)
 		self.streamPlayer:play()
 		return EVENT_CONSUME
 	end, -100))
+	-- The Touch's ordinary number keys have no firmware preset mapping.
+	-- Wake to an assigned preset from standby; when awake, only intercept
+	-- numbers while Radio owns playback.
+	table.insert(self.listenerHandles, Framework:addListener(EVENT_IR_PRESS, function(event)
+		local standby = jiveMain:getSoftPowerState() == "off"
+		if standby or self.streamPlayer.ownsPlayback then
+			local button = Framework:getIRButtonName(event:getIRCode())
+			if button and button:match("^[1-9]$") then
+				local station = self.presetStore:getPreset(tonumber(button))
+				if station then
+					if standby then jiveMain:setSoftPowerState("on") end
+					return playPreset(self, event, station)
+				end
+			end
+		end
+		return EVENT_UNUSED
+	end, -10))
 end
