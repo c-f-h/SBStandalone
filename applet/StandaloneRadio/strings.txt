@@ -2,6 +2,18 @@ STANDALONE_RADIO
 	EN	Standalone Radio
 	NL	Zelfstandige Radio
 
+STANDALONE_RADIO_PLAY
+	EN	Play last station
+	NL	Laatste zender afspelen
+
+STANDALONE_RADIO_SAVED
+	EN	Saved stations
+	NL	Opgeslagen zenders
+
+STANDALONE_RADIO_SAVE_CURRENT
+	EN	Save current station
+	NL	Huidige zender opslaan
+
 STANDALONE_RADIO_STOP
 	EN	Stop
 	NL	Stop

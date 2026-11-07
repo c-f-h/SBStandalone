@@ -101,6 +101,16 @@ function PresetStore:getPreset(number)
 	return preset
 end
 
+function PresetStore:getLastStation()
+	local station = self.settings.lastStation
+	if station and Stations.normalize(station) then return station end
+	return self:getPreset(self.settings.lastPreset or 1)
+end
+
+function PresetStore:rememberStation(station)
+	self.settings.lastStation = clonePreset(station, station.preset)
+end
+
 
 function PresetStore:assign(number, station)
 	number = tonumber(number)
@@ -117,7 +127,7 @@ end
 
 -- Provider favorites share the existing applet settings store with presets.
 function PresetStore:saveFavorite(station)
-	if not station or not station.provider then return false end
+	if not station or (not station.provider and station.source ~= "radiobrowser" and station.source ~= "user") then return false end
 	local favorites=self.settings.favorites or {}
 	for index,item in ipairs(favorites) do
 		if item.id==station.id and item.provider==station.provider then

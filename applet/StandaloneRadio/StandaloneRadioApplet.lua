@@ -80,7 +80,7 @@ function _ensureComponents(self)
 		log = log,
 		httpsProxyStatus = self.httpsProxyStatus,
 	})
-	self.lastStation = self.presetStore:getPreset(settings.lastPreset or 1)
+	self.lastStation = self.presetStore:getLastStation()
 	self.radioFeeds = OpmlClient.new({log=log,httpsProxyStatus=self.httpsProxyStatus,provider=OpmlProviders.get("radiofeeds")})
     self.opmlClients={radiofeeds=self.radioFeeds,tunein=OpmlClient.new({log=log,httpsProxyStatus=self.httpsProxyStatus,
         provider=OpmlProviders.get("tunein",{partnerId=settings.tuneInPartnerId})})}
@@ -150,6 +150,7 @@ function _ensureComponents(self)
 				self.trackArtwork:reset(station)
 				self.baseNowPlaying:activate(station, stationGeneration)
 				settings.lastStationId = station.id
+				self.presetStore:rememberStation(station)
 				if station.preset then
 					settings.lastPreset = station.preset
 				end
@@ -292,6 +293,17 @@ function _refreshMenu(self)
 	end
 
 	local items = {
+        {text=self:string("STANDALONE_RADIO_PLAY"),sound="SELECT",weight=-4,
+            callback=function() self.streamPlayer:play() end},
+        {text=self:string("STANDALONE_RADIO_STOP"),sound="SELECT",weight=-3,
+            callback=function() if self.streamPlayer.ownsPlayback then self.streamPlayer:stop() end end},
+        {text=self:string("STANDALONE_RADIO_SAVED"),sound="SELECT",weight=-2,
+            callback=function() self:savedStationsMenu() end},
+        {text=self:string("STANDALONE_RADIO_SAVE_CURRENT"),sound="SELECT",weight=-1,
+            callback=function()
+                local station=self.streamPlayer:getCurrentStation()
+                if station then self:_showOpmlStationActions(station) end
+            end},
 		{
 			text = self:string("STANDALONE_RADIO_BROWSER"),
 			sound = "SELECT",
@@ -324,6 +336,18 @@ function _refreshMenu(self)
 
 	self.menuWidget:setItems(items)
 	self.menuWidget:reLayout()
+end
+
+function savedStationsMenu(self)
+    local stations,seen={},{}
+    for _,station in ipairs(self.presetStore:getFavorites()) do
+        stations[#stations+1]=station;seen[station.id]=true
+    end
+    for number=1,9 do
+        local station=self.presetStore:getPreset(number)
+        if station and not seen[station.id] then stations[#stations+1]=station;seen[station.id]=true end
+    end
+    self:_showStationList(self:string("STANDALONE_RADIO_SAVED"),stations)
 end
 
 
@@ -408,7 +432,7 @@ function _stationItems(self, stations)
 		local selectedStation = station
 		items[#items + 1] = {
 			text = Stations.displayName(selectedStation, self), sound = "SELECT", weight = index,
-            cmCallback=selectedStation.provider and function() self:_showOpmlStationActions(selectedStation) end or nil,
+            cmCallback=function() self:_showOpmlStationActions(selectedStation) end,
 			callback = function()
 				_logInfo("selected station ", Stations.displayName(selectedStation, self))
 				self:_playStation(selectedStation)
