@@ -9,6 +9,7 @@ local SocketHttp = require("jive.net.SocketHttp")
 local Stations = require("applets.StandaloneRadio.Stations")
 local UrlTransport = require("applets.StandaloneRadio.UrlTransport")
 local Timer = require("jive.ui.Timer")
+local TouchPolicy = require("applets.StandaloneRadio.TouchPolicy")
 
 local okJson, json = pcall(require, "json")
 if not okJson then json = nil end
@@ -22,7 +23,7 @@ RadioBrowser.__index = RadioBrowser
 local API_HOST = "all.api.radio-browser.info"
 local API_BASE = "http://" .. API_HOST
 local USER_AGENT = "StandaloneRadio/0.9.18"
-local CACHE_DIR = "/etc/squeezeplay/userpath/StandaloneRadio/cache/stations"
+local CACHE_DIR = TouchPolicy.cacheRoot .. "/stations"
 
 local PAGE_SIZE = 250
 local SEARCH_CHUNK_SIZE = 100
@@ -374,10 +375,15 @@ function RadioBrowser:_writePopular(code, stations)
 	local temporary = path .. ".tmp"
 	local file = io.open(temporary, "wb")
 	if not file then return false, "popular cache write failed" end
+    local bytes = 0
 	for _, station in ipairs(stations or {}) do
 		local ok, line = pcall(function() return json.encode(cacheRecord(station)) end)
 		if not ok or not line then closeFile(file); os.remove(temporary); return false, "popular cache encode failed" end
-		file:write(line, "\n")
+        bytes=bytes+#line+1
+        if TouchPolicy.directoryBytes and bytes>TouchPolicy.directoryBytes/4 then
+            closeFile(file);os.remove(temporary);return false,"popular cache exceeds Touch limit"
+        end
+		if not file:write(line, "\n") then closeFile(file);os.remove(temporary);return false,"popular cache write failed" end
 	end
 	file:close()
 	if not os.rename(temporary, path) then
@@ -388,13 +394,24 @@ function RadioBrowser:_writePopular(code, stations)
 end
 
 function RadioBrowser:refresh(code, callback, progress)
+	if type(code)~="string" or not code:match("^%u%u$") then callback(nil,"invalid country code");return false end
+	if TouchPolicy.touch then
+        if next(self.refreshes) then callback(nil,"another country refresh is in progress");return false end
+        self:cancelSearch();self:cancelPopular()
+        -- Keep just one country's bounded data and one temporary replacement.
+        for name in lfs.dir(CACHE_DIR) do
+            if name:match("^station%-cache%-%u%u%.") and name:sub(1,#("station-cache-"..code.."."))~="station-cache-"..code.."." then
+                os.remove(CACHE_DIR.."/"..name)
+            end
+        end
+    end
 	if self.refreshes[code] then return false end
 	if not json then callback(nil, "JSON support unavailable"); return false end
 	local temporary = dataPath(code) .. ".tmp"
 	local output = io.open(temporary, "wb")
 	if not output then callback(nil, "station cache write failed"); return false end
 	local request = {
-		count = 0, offset = 0,
+		count = 0, offset = 0, bytes = 0,
 		file = output, temporaryPath = temporary, popular = {},
 	}
 	self.refreshes[code] = request
@@ -438,6 +455,7 @@ function RadioBrowser:refresh(code, callback, progress)
 			if err then finish(err); return end
 			-- RequestHttp calls the sink once before the response body is available.
 			if body == nil then return end
+            if TouchPolicy.touch and #body>2*1024*1024 then finish("country response exceeds Touch limit");return end
 			self.log:info("StandaloneRadio: response country=", code, " offset=", tostring(request.offset), " bytes=", tostring(#body))
 			local ok, page = pcall(function() return json.decode(body) end)
 			if not ok or type(page) ~= "table" then finish("invalid JSON"); return end
@@ -448,7 +466,11 @@ function RadioBrowser:refresh(code, callback, progress)
 					if station then
 						local encoded, line = pcall(function() return json.encode(cacheRecord(station)) end)
 						if not encoded or not line then finish("station cache encode failed"); return end
-						request.file:write(line, "\n")
+                        request.bytes=request.bytes+#line+1
+                        if TouchPolicy.directoryBytes and request.bytes>TouchPolicy.directoryBytes then
+                            finish("country directory exceeds Touch cache limit");return
+                        end
+						if not request.file:write(line, "\n") then finish("station cache write failed");return end
 						request.count = request.count + 1
 						self:_addPopular(request.popular, station, 100)
 					end

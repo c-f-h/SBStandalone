@@ -9,6 +9,7 @@ local RequestHttp = require("jive.net.RequestHttp")
 local Resolver = require("applets.StandaloneRadio.Resolver")
 local SocketHttp = require("jive.net.SocketHttp")
 local UrlTransport = require("applets.StandaloneRadio.UrlTransport")
+local TouchPolicy = require("applets.StandaloneRadio.TouchPolicy")
 
 local jnt = jnt
 
@@ -18,7 +19,7 @@ module(...)
 local LogoCache = {}
 LogoCache.__index = LogoCache
 
-local CACHE_DIR = "/etc/squeezeplay/userpath/StandaloneRadio/cache/logos"
+local CACHE_DIR = TouchPolicy.cacheRoot .. "/logos"
 local MAX_BYTES = 512 * 1024
 local MAX_FILES = 100
 local NEGATIVE_TTL = 3600
@@ -365,6 +366,9 @@ end
 
 function LogoCache:ensure(station, callback)
     callback = callback or function() end
+    -- Initial Touch trial uses the stock/Base artwork path. Do not download
+    -- and persist a second logo cache on its 17 MiB flash overlay.
+    if TouchPolicy.touch then callback(nil);return end
     if not station or (station.source ~= "radiobrowser" and station.source ~= "radiofeeds"
         and station.source ~= "user" and station.source ~= "tunein" and station.source ~= "custom") then
         callback(nil);return

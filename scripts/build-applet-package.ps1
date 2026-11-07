@@ -47,6 +47,7 @@ $requiredRootFiles = @(
 	"Countries.lua",
 	"HttpsProxyStatus.lua",
 	"LogoCache.lua",
+	"TouchPolicy.lua",
 	"NativeNowPlaying.lua",
 	"PresetStore.lua",
 	"RadioBrowser.lua",
