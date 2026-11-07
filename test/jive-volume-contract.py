@@ -22,7 +22,7 @@ local Player = {getLocalPlayer=function() return {getDigitalVolumeControl=functi
 local log = {debug=function() end}
 local stock = assert(loadstring('local decode,Player,log=...; '..stock_gain..' return _audg'))(decode,Player,log)
 StreamPlayer={}
-assert(loadstring(hooks))()
+assert(loadstring('local Player=...; '..hooks))(Player)
 local proto={send=function() return true end}
 local playback={slimproto=proto,_streamHttpHeaders=function() end,_streamDisconnect=function() end,
     _audg=stock,translateServerGain=function(_,gain) return gain,50 end,

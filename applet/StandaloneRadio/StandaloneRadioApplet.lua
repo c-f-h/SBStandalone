@@ -34,6 +34,8 @@ local UrlTransport = require("applets.StandaloneRadio.UrlTransport")
 local log = require("jive.utils.log").logger("StandaloneRadio")
 local appletManager = appletManager
 local jiveMain = jiveMain
+-- Base is optional; only its identified local player may resume stopped Radio.
+local hasServerMigration, ServerMigration = pcall(require, "applets.StandaloneBase.ServerMigration")
 
 local AUTOTEST_MARKER = "/tmp/standalone-radio-autotest"
 local DEFAULT_COUNTRY_CODE = "NL"
@@ -851,8 +853,7 @@ function enableStandaloneMode(self)
 			_logInfo("preset action ", station.id)
 			self:_playStation(station)
 		else
-			_logInfo("preset action ignored; no station assigned")
-			self:_showPopup(self:string("STANDALONE_RADIO_NO_STATION_SELECTED"))
+			return EVENT_UNUSED
 		end
 		return EVENT_CONSUME
 	end
@@ -865,25 +866,52 @@ function enableStandaloneMode(self)
 			end, -100))
 		table.insert(self.listenerHandles, Framework:addActionListener("set_preset_" .. i, self,
 			function()
+                if not self.streamPlayer.ownsPlayback then return EVENT_UNUSED end
 				self:_assignPreset(i)
 				return EVENT_CONSUME
 			end, -100))
 	end
 
 	local function stopAction()
+		if not self.streamPlayer.ownsPlayback then return EVENT_UNUSED end
 		self.streamPlayer:stop()
 		return EVENT_CONSUME
 	end
-	table.insert(self.listenerHandles, Framework:addActionListener("pause", self, function() self.streamPlayer:pause();return EVENT_CONSUME end, -100))
+	table.insert(self.listenerHandles, Framework:addActionListener("pause", self, function()
+        if not self.streamPlayer.ownsPlayback then return EVENT_UNUSED end
+        self.streamPlayer:pause();return EVENT_CONSUME
+    end, -100))
 	table.insert(self.listenerHandles, Framework:addActionListener("stop", self, stopAction, -100))
-	table.insert(self.listenerHandles, Framework:addActionListener("play", self, function()
+	local function playAction()
+		if not self.streamPlayer.ownsPlayback then
+			local player = appletManager:callService("getCurrentPlayer")
+			local server = player and player:isLocal() and player:getSlimServer()
+			if not hasServerMigration or not server or
+				server.id ~= ServerMigration.LOCAL_UUID or not self.lastStation then return EVENT_UNUSED end
+			if jiveMain:getSoftPowerState() ~= "off" and not self.streamPlayer.resumeAfterStop then
+				return EVENT_UNUSED
+			end
+			if jiveMain:getSoftPowerState() == "off" then jiveMain:setSoftPowerState("on") end
+			self:_playStation(self.lastStation)
+			return EVENT_CONSUME
+		end
+		if jiveMain:getSoftPowerState() == "off" then jiveMain:setSoftPowerState("on") end
 		self.streamPlayer:play()
 		return EVENT_CONSUME
-	end, -100))
-	-- The Touch's ordinary number keys have no firmware preset mapping.
-	-- Wake to an assigned preset from standby; when awake, only intercept
-	-- numbers while Radio owns playback.
+	end
+	-- Framework sorts negative priorities by absolute value. Run before the
+	-- stock ScreenSavers listener (-100), regardless of applet load order.
+	table.insert(self.listenerHandles, Framework:addActionListener("play", self, playAction, -10))
+	-- The powered-off clock handles raw IR input inside its window, converts
+	-- Play synchronously and queues Pause after waking. No global Play action
+	-- is emitted, so intercept the short IR press before it reaches that window.
 	table.insert(self.listenerHandles, Framework:addListener(EVENT_IR_PRESS, function(event)
+		if jiveMain:getSoftPowerState() == "off" and Framework:getAction(event) == "play" then
+			return playAction()
+		end
+		-- The Touch's ordinary number keys have no firmware preset mapping.
+		-- Wake directly to an assigned preset from standby. When awake, only
+		-- intercept numbers while Radio owns playback.
 		local standby = jiveMain:getSoftPowerState() == "off"
 		if standby or self.streamPlayer.ownsPlayback then
 			local button = Framework:getIRButtonName(event:getIRCode())
