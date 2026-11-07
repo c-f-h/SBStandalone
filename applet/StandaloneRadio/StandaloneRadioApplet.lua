@@ -835,6 +835,13 @@ function scheduleStartupTest(self)
 	self._startupTimer = Timer(5000, function()
 		_logInfo("startup self-test starting preset 1")
 		self:_playStation(self.presetStore:getPreset(1))
+        local generation=self.streamPlayer.stationGeneration
+        self._startupStopTimer=Timer(30000,function()
+            if self.streamPlayer.ownsPlayback and self.streamPlayer.stationGeneration==generation then
+                self.streamPlayer:stop()
+            end
+        end,true)
+        self._startupStopTimer:start()
 	end, true)
 	self._startupTimer:start()
 end
